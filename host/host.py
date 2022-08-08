@@ -1,95 +1,85 @@
 import time
-from websocket import create_connection
+import websockets
+import asyncio
 import os
-baseIP = "192.168.1.216"
+from logger import log
+baseIP = "10.0.0.2"
 #baseIP = "127.0.0.1"
-numofVMs = 20
+numofVMs = 1
 
 debug = True
-
-def log(message, debugmsg=False):
-    hr = time.localtime().tm_hour
-    minn = time.localtime().tm_min
-    sec = time.localtime().tm_sec
-    if debugmsg:
-        print(f"[{hr}:{minn}:{sec}] (DEBUG)>> ", message)
-    else:
-        print(f"[{hr}:{minn}:{sec}]>> ", message)
 
 
 def getAllIPs():
     ips = []
-    
     firstEnding = int(baseIP.split('.')[3])
     
+    #get all IPs of VMs
     for ip in range(firstEnding, (firstEnding + numofVMs)):
         ips.append(baseIP[:-len(baseIP.split('.')[3])] + str(ip))
+    
     return ips
 
 
-def remoteCmdAll(cmd):
+async def remoteCmdAll(cmd):
     for ip in getAllIPs():
-        sendCmd(cmd, ip)
+        await sendCmd(cmd, ip)
 
-def sendCmd(cmd, ip):
-    uri = f"ws://{ip}:80/"
-    try:
-        ws = create_connection(uri)
-    except:
-        log(f"Couldn't connect to {ip}! Did not run '{cmd}'")
+async def sendCmd(cmd, ip):
+    async with websockets.connect(f"ws://{ip}:80") as websocket:
+        await websocket.send(cmd)
+        resp = await websocket.recv()
+        await websocket.close()
+        return resp
 
-    ws.send(cmd)
-    result =  ws.recv()
-    ws.close()
-    log(f"Ran command: ({cmd}) on {ip}")
-    if debug:
-        log(f"Output: {result}", debugmsg=True)
-
-if __name__ == '__main__':
+async def main():
+    os.system("cls")
     while True:
-        rsp = input("> ")
+        rsp = input("> ").lower()
         if rsp.lower() == "help":
-            print("help - Displays this help page.")
-            print("runall - 'runall <command>' - Runs a command on ALL vms.")
-            print("restartall - 'restartall' - Restarts ALL vms.")
-            print("status - 'status' - Checks the status on all vms.")
-            print("clear - Clears the screen")
+            log.info("help - Displays this help page.")
+            log.info("runall - 'runall <command>' - Runs a command on ALL vms.")
+            log.info("restartall - 'restartall' - Restarts ALL vms.")
+            log.info("status - 'status' - Checks the status on all vms.")
+            log.info("clear - Clears the screen")
             continue
         
         if rsp.startswith("clear"):
             os.system("cls")
             continue
 
-        if rsp.lower().startswith("status"):
+        if rsp.startswith("status"):
             for ip in getAllIPs():
                 try:
-                    uri = f"ws://{ip}:80/"
-                    ws = create_connection(uri, timeout=0.5)
-                    ws.close()
-                    log(f"{ip} is UP!")
+                    resp = await sendCmd("ipconfig", ip)
+                    log.info(log.Color.GREEN + "Connected to {}".format(ip) + log.Color.RESET)
                 except:
-                    log(f"FAILED to connect to {ip}!")
+                    log.error(f"FAILED to connect to {ip}!")
             continue
 
-        if rsp.lower().startswith("runall"):
+        if rsp.startswith("runall"):
             cmd = rsp[7:]
             for ip in getAllIPs():
                 try:
-                    uri = f"ws://{ip}:80/"
-                    ws = create_connection(uri, timeout=0.1)
-                    log(f"Sending command ({cmd}) to {ip}!")
-                    ws.send(cmd)
-                    result = ws.recv()
-                    if debug:
-                        log(f"Output: {result}", debugmsg=True)
-                    ws.close()
+                    log.debug(f"Sending command ({cmd}) to {ip}!")
+                    resp = await sendCmd(cmd, ip)
+                    log.info(f"{ip} - {resp}")
+
+
                 except:
-                    log(f"FAILED to send command to {ip}")
-                    ws.close()
+                    log.error(f"FAILED to send command to {ip}")
             continue
+        
+
+
+            
 
 
 
 
-
-        print("Command not found! Try doing 'help'")
+        log.info("Command not found! Try doing 'help'")
+    
+if __name__ == '__main__':
+    asyncio.get_event_loop().run_until_complete(main())
+    asyncio.get_event_loop().run_forever()
+    asyncio.get_event_loop().close()
