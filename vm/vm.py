@@ -2,7 +2,7 @@ import asyncio
 from re import sub
 import websockets
 import subprocess
-import urllib
+import urllib.request
 
 version = "0.0.1"
 
@@ -32,8 +32,9 @@ def checkUpdate():
                     #restart windows
                     subprocess.run("shutdown -r -t 0")
 
-    except:
-        print("Failed to check for updates!")
+    except Exception as e:
+        print("Error checking for update: " + str(e))
+
 
 
 
